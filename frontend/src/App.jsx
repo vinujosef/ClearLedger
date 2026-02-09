@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
 
 const API_URL = "http://localhost:8000";
 
@@ -162,6 +162,23 @@ function App() {
     return String(val).replace(/\.(xlsx|xls|csv)$/i, "");
   };
   const chargeBrokerage = (charge) => (charge?.brokerage ?? charge?.taxable_value_of_supply);
+
+  const formatLakhs = (value) => {
+    const lakhs = Number(value) / 100000;
+    if (!Number.isFinite(lakhs)) return "-";
+    return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 }).format(lakhs);
+  };
+
+  const networthTitle = (() => {
+    const years = (summary.networth_by_fy || [])
+      .map((e) => String(e.fy || "").replace("FY", ""))
+      .map((v) => parseInt(v, 10))
+      .filter((v) => Number.isFinite(v));
+    if (years.length === 0) return "Net Worth Over Time";
+    const minY = Math.min(...years);
+    const maxY = Math.max(...years);
+    return `Net Worth Over Time (${minY}–${maxY})`;
+  })();
   const chargeSebiFees = (charge) => (charge?.sebi_turnover_fees ?? charge?.sebi_txn_tax);
   const extractSymbol = (desc) => {
     if (!desc) return "";
@@ -608,20 +625,38 @@ function App() {
             </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 h-[320px]">
-                <div className="text-sm font-semibold text-slate-900 mb-3">Net Worth by Financial Year</div>
+              <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 h-[400px]">
+                <div className="text-sm font-semibold text-slate-900 mb-3">{networthTitle}</div>
                 <ResponsiveContainer>
-                  <BarChart data={summary.networth_by_fy}>
+                  <LineChart data={summary.networth_by_fy} margin={{ top: 24, right: 30, bottom: 46 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="fy" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="networth" fill="#0f172a">
-                      {summary.networth_by_fy.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill="#0f172a" />
-                      ))}
-                    </Bar>
-                  </BarChart>
+                    <XAxis
+                      dataKey="fy"
+                      tickMargin={8}
+                      padding={{ left: 8, right: 8 }}
+                      angle={-30}
+                      textAnchor="end"
+                      height={40}
+                    />
+                    <YAxis
+                      tickFormatter={formatLakhs}
+                      width={76}
+                      tickMargin={10}
+                      label={{ value: "Net Worth (₹ in Lakhs)", angle: -90, position: "outsideLeft", offset: 34 }}
+                    />
+                    <Tooltip
+                      formatter={(value) => [`₹${formatLakhs(value)}L`, "Net Worth"]}
+                      labelFormatter={(label) => `Year: ${label}`}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="networth"
+                      stroke="#0f172a"
+                      strokeWidth={3}
+                      dot={{ r: 3 }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
                 </ResponsiveContainer>
               </div>
 
@@ -655,7 +690,9 @@ function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {data.holdings.map(h => (
+                  {[...(data.holdings || [])]
+                    .sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0))
+                    .map(h => (
                     <tr key={h.symbol}>
                       <td className="px-4 py-3 font-semibold">{h.symbol}</td>
                       <td className="px-4 py-3">{h.quantity}</td>
