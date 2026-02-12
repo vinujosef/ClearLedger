@@ -13,7 +13,6 @@ function App() {
     realized_pnl: 0,
     net_worth: 0,
     net_worth_yoy: 0,
-    net_worth_note: "",
     fy_list: [],
     missing_symbols: [],
     symbol_aliases: {}
@@ -142,15 +141,22 @@ function App() {
     return Number.isFinite(num) ? num : null;
   };
 
-  const fmt = (val) => {
+  const formatIN = (val, { min = 2, max = 2 } = {}) => {
     const n = toNumber(val);
     if (n === null) return "—";
-    return n.toLocaleString();
+    return new Intl.NumberFormat("en-IN", {
+      minimumFractionDigits: min,
+      maximumFractionDigits: max,
+    }).format(n);
+  };
+
+  const fmt = (val) => {
+    return formatIN(val, { min: 2, max: 2 });
   };
   const fmtCharge = (val) => {
     const n = toNumber(val);
     if (n === null || n === 0) return "—";
-    return n.toLocaleString();
+    return formatIN(n, { min: 2, max: 2 });
   };
 
   const contractTradeRows = (preview?.contract_trade_rows_preview || [])
@@ -179,6 +185,17 @@ function App() {
     const maxY = Math.max(...years);
     return `Net Worth Over Time (${minY}–${maxY})`;
   })();
+
+  const totals = (data.holdings || []).reduce(
+    (acc, h) => {
+      acc.invested += Number(h.invested_val || 0);
+      acc.current += Number(h.current_val || 0);
+      return acc;
+    },
+    { invested: 0, current: 0 }
+  );
+  const totalPnl = totals.current - totals.invested;
+  const totalPnlPct = totals.invested > 0 ? (totalPnl / totals.invested) * 100 : 0;
   const chargeSebiFees = (charge) => (charge?.sebi_turnover_fees ?? charge?.sebi_txn_tax);
   const extractSymbol = (desc) => {
     if (!desc) return "";
@@ -588,41 +605,27 @@ function App() {
               </div>
             </div>
           )}
-          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6 flex items-center justify-between">
-            <div>
-              <div className="text-xs uppercase tracking-widest text-slate-400">Current Net Worth</div>
-              <div className={`text-3xl font-semibold ${data.net_worth_yoy >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                ₹{data.net_worth.toLocaleString()}
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-200 p-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+              <div className="text-center">
+                <div className="text-xs uppercase tracking-widest text-slate-400">Total Invested</div>
+                <div className="text-2xl font-semibold text-slate-900 mt-2">₹{formatIN(totals.invested)}</div>
               </div>
-                <div className={`text-sm mt-1 ${data.net_worth_yoy >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  YoY: {data.net_worth_yoy >= 0 ? '+' : ''}₹{data.net_worth_yoy.toLocaleString()}
-                </div>
-                <div className="text-xs text-slate-400 mt-2">{data.net_worth_note}</div>
-            </div>
-            <div className="text-right">
-                <div className="text-xs uppercase tracking-widest text-slate-400">Financial Year</div>
-                <select
-                  value={fy}
-                  onChange={(e) => {
-                    const nextFY = e.target.value;
-                    setFy(nextFY);
-                    fetchDashboard(nextFY);
-                    fetchRealized(nextFY);
-                  }}
-                  className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm"
-                >
-                  {[...new Set([fy, ...(data.fy_list || [])])].filter(Boolean).map((f) => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
-                </select>
-                <div className="text-sm mt-3">
-                  <span className="text-slate-500">Realized P&L ({fy}): </span>
-                  <span className={`font-semibold ${data.realized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {data.realized_pnl >= 0 ? '+' : ''}₹{data.realized_pnl.toLocaleString()}
+              <div className="text-center">
+                <div className="text-xs uppercase tracking-widest text-slate-400">Current Value</div>
+                <div className="text-2xl font-semibold text-slate-900 mt-2">₹{formatIN(totals.current)}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xs uppercase tracking-widest text-slate-400">Total P&L</div>
+                <div className={`text-2xl font-semibold mt-2 ${totalPnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {totalPnl >= 0 ? '+' : ''}₹{formatIN(totalPnl)}
+                  <span className="text-xs text-slate-500 ml-2">
+                    ({totalPnl >= 0 ? '+' : ''}{totalPnlPct.toFixed(2)}%)
                   </span>
                 </div>
               </div>
             </div>
+          </div>
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 h-[400px]">
@@ -698,10 +701,10 @@ function App() {
                       <td className="px-4 py-3">{h.quantity}</td>
                       <td className="px-4 py-3">{h.avg_price}</td>
                       <td className="px-4 py-3">{h.cmp}</td>
-                      <td className="px-4 py-3">{h.invested_val.toLocaleString()}</td>
-                      <td className="px-4 py-3">{h.current_val.toLocaleString()}</td>
+                      <td className="px-4 py-3">{formatIN(h.invested_val)}</td>
+                      <td className="px-4 py-3">{formatIN(h.current_val)}</td>
                       <td className={`px-4 py-3 ${h.pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {h.pnl.toLocaleString()}
+                        {formatIN(h.pnl)}
                       </td>
                       <td className={`px-4 py-3 ${h.pnl_pct >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {h.pnl_pct}%

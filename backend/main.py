@@ -517,7 +517,6 @@ def get_dashboard(fy: str, db: Session = Depends(get_db)):
                 "realized_pnl": 0.0,
                 "net_worth": 0.0,
                 "net_worth_yoy": 0.0,
-                "net_worth_note": "Estimated using latest prices.",
             }
 
         # 2. Health Check
@@ -617,7 +616,6 @@ def get_dashboard(fy: str, db: Session = Depends(get_db)):
             "realized_pnl": round(realized_total, 2),
             "net_worth": round(net_worth, 2),
             "net_worth_yoy": round(net_worth_yoy, 2),
-            "net_worth_note": "Estimated using latest prices.",
             "missing_symbols": missing_symbols,
             "symbol_aliases": alias_map,
         }
