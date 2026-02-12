@@ -6,6 +6,7 @@ import pandas as pd
 import yfinance as yf
 import logging
 import warnings
+import time
 from datetime import datetime, date
 import uuid
 import math
@@ -54,8 +55,12 @@ def get_db():
     finally:
         db.close()
 
-def _user_log(message: str):
-    print(f"🧾 {message}")
+# Removed timing logs
+
+# Simple in-memory cache for live prices to avoid repeated yfinance calls.
+# Keyed by the requested symbols + their mapped tickers to stay consistent.
+_PRICE_CACHE = {}
+_PRICE_CACHE_TTL_SEC = 600
 
 # --- ENDPOINTS ---
 
@@ -430,6 +435,13 @@ def _resolve_latest_prices(symbols: list[str], alias_map: dict[str, str]):
     live_prices = {}
     missing_symbols = []
 
+    # Cache key includes symbol->ticker mapping to keep results consistent.
+    cache_key = tuple(sorted(f"{s}:{mapped[s]}" for s in symbols))
+    now = time.time()
+    cached = _PRICE_CACHE.get(cache_key)
+    if cached and (now - cached["ts"] <= _PRICE_CACHE_TTL_SEC):
+        return cached["live_prices"], cached["missing_symbols"]
+
     def _last_valid(series: pd.Series):
         if series is None:
             return None
@@ -456,6 +468,12 @@ def _resolve_latest_prices(symbols: list[str], alias_map: dict[str, str]):
             else:
                 missing_symbols.append({"symbol": s, "attempted": mapped[s]})
 
+    # Store in-memory cache to reuse across dashboard + summary requests.
+    _PRICE_CACHE[cache_key] = {
+        "ts": now,
+        "live_prices": live_prices,
+        "missing_symbols": missing_symbols,
+    }
     return live_prices, missing_symbols
 
 @app.post("/symbols/aliases")
