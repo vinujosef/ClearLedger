@@ -26,6 +26,8 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
   const [stagingId, setStagingId] = useState(null);
+  const [holdingsSearch, setHoldingsSearch] = useState("");
+  const [realizedSearch, setRealizedSearch] = useState("");
 
   const currentFY = () => {
     const now = new Date();
@@ -197,6 +199,9 @@ function App() {
   const totalPnl = totals.current - totals.invested;
   const totalPnlPct = totals.invested > 0 ? (totalPnl / totals.invested) * 100 : 0;
   const chargeSebiFees = (charge) => (charge?.sebi_turnover_fees ?? charge?.sebi_txn_tax);
+
+  const holdingsQuery = holdingsSearch.trim().toUpperCase();
+  const realizedQuery = realizedSearch.trim().toUpperCase();
   const extractSymbol = (desc) => {
     if (!desc) return "";
     const base = desc.split("-")[0];
@@ -209,24 +214,6 @@ function App() {
     if (!noteKey || noteKey === "—") return "—";
     if (count > 1) return `${noteKey} (MULTI)`;
     return noteKey;
-  };
-  const noteColorClass = (noteKey) => {
-    if (!noteKey || noteKey === "—") return "";
-    const palette = [
-      "bg-slate-50",
-      "bg-blue-50",
-      "bg-amber-50",
-      "bg-emerald-50",
-      "bg-rose-50",
-      "bg-indigo-50",
-      "bg-teal-50",
-      "bg-orange-50",
-    ];
-    let hash = 0;
-    for (let i = 0; i < noteKey.length; i += 1) {
-      hash = (hash * 31 + noteKey.charCodeAt(i)) % 100000;
-    }
-    return palette[hash % palette.length];
   };
   const tradeCountByNoteDate = new Map();
   for (const t of contractTradeRows) {
@@ -678,7 +665,43 @@ function App() {
             </div>
 
             <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b text-sm font-semibold text-slate-900">Current Holdings</div>
+              <div className="px-4 py-3 border-b flex items-center justify-between gap-4">
+                <div className="text-sm font-semibold text-slate-900">Current Holdings</div>
+                <div className="relative w-64">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <svg
+                      className="h-4 w-4"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="11" cy="11" r="7" />
+                      <line x1="16.65" y1="16.65" x2="21" y2="21" />
+                    </svg>
+                  </span>
+                  <input
+                    className="w-full rounded-lg border border-slate-300 bg-slate-50 pl-9 pr-9 py-2 text-sm placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
+                    placeholder="Search symbol…"
+                    aria-label="Search current holdings by symbol"
+                    value={holdingsSearch}
+                    onChange={(e) => setHoldingsSearch(e.target.value)}
+                  />
+                  {holdingsSearch && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-slate-500 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                      aria-label="Clear current holdings search"
+                      onClick={() => setHoldingsSearch("")}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase tracking-widest text-slate-400 border-b bg-slate-50">
                   <tr className="text-left">
@@ -695,8 +718,11 @@ function App() {
                 <tbody className="divide-y">
                   {[...(data.holdings || [])]
                     .sort((a, b) => (a.pnl ?? 0) - (b.pnl ?? 0))
-                    .map(h => (
-                    <tr key={h.symbol}>
+                    .map(h => {
+                      const sym = String(h.symbol || "").toUpperCase();
+                      const hit = !holdingsQuery || sym.includes(holdingsQuery);
+                      return (
+                    <tr key={h.symbol} className={hit ? "" : "opacity-20"}>
                       <td className="px-4 py-3 font-semibold">{h.symbol}</td>
                       <td className="px-4 py-3">{h.quantity}</td>
                       <td className="px-4 py-3">{h.avg_price}</td>
@@ -710,13 +736,49 @@ function App() {
                         {h.pnl_pct}%
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>
 
           <div className="rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden">
-            <div className="px-4 py-3 border-b text-sm font-semibold text-slate-900">Past Holdings (Realized)</div>
+            <div className="px-4 py-3 border-b flex items-center justify-between gap-4">
+              <div className="text-sm font-semibold text-slate-900">Past Holdings (Realized)</div>
+              <div className="relative w-64">
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                  <svg
+                    className="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="16.65" y1="16.65" x2="21" y2="21" />
+                  </svg>
+                </span>
+                <input
+                  className="w-full rounded-lg border border-slate-300 bg-slate-50 pl-9 pr-9 py-2 text-sm placeholder:text-slate-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-400 focus:border-slate-400"
+                  placeholder="Search symbol…"
+                  aria-label="Search past holdings by symbol"
+                  value={realizedSearch}
+                  onChange={(e) => setRealizedSearch(e.target.value)}
+                />
+                {realizedSearch && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-slate-500 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-400"
+                    aria-label="Clear past holdings search"
+                    onClick={() => setRealizedSearch("")}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            </div>
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase tracking-widest text-slate-400 border-b bg-slate-50">
                   <tr className="text-left">
@@ -729,8 +791,11 @@ function App() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {realized.map((r, idx) => (
-                    <tr key={`${r.symbol}-${idx}`}>
+                  {realized.map((r, idx) => {
+                    const sym = String(r.symbol || "").toUpperCase();
+                    const hit = !realizedQuery || sym.includes(realizedQuery);
+                    return (
+                    <tr key={`${r.symbol}-${idx}`} className={hit ? "" : "opacity-20"}>
                       <td className="px-4 py-3 font-semibold">{r.symbol}</td>
                       <td className="px-4 py-3">{r.sell_date}</td>
                       <td className="px-4 py-3">{r.sell_qty}</td>
@@ -740,7 +805,7 @@ function App() {
                         {r.realized_pnl}
                       </td>
                     </tr>
-                  ))}
+                  )})}
                   {realized.length === 0 && (
                     <tr>
                       <td className="px-4 py-4 text-sm text-slate-400" colSpan="6">No realized trades for this FY.</td>
