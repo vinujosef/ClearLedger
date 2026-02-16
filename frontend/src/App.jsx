@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend } from 'recharts';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, CartesianGrid, Legend, Label, LabelList } from 'recharts';
 
 const API_URL = "http://localhost:8000";
 
@@ -187,6 +187,18 @@ function App() {
     const maxY = Math.max(...years);
     return `Net Worth Over Time (${minY}–${maxY})`;
   })();
+
+  const chargesChart = (summary.charges_by_fy || []).map((r) => ({
+    ...r,
+    charges: Math.abs(Number(r.charges || 0)),
+  }));
+  const chargesAbsMax = chargesChart.reduce((m, r) => Math.max(m, r.charges || 0), 0);
+  const chargesUnit = chargesAbsMax >= 100000 ? "lakhs" : "thousands";
+  const chargesScale = chargesUnit === "lakhs" ? 100000 : 1000;
+  const formatChargesAxis = (val) => {
+    const n = Math.abs(Number(val) || 0) / chargesScale;
+    return formatIN(n);
+  };
 
   const totals = (data.holdings || []).reduce(
     (acc, h) => {
@@ -630,10 +642,18 @@ function App() {
                     />
                     <YAxis
                       tickFormatter={formatLakhs}
-                      width={76}
-                      tickMargin={10}
-                      label={{ value: "Net Worth (₹ in Lakhs)", angle: -90, position: "outsideLeft", offset: 34 }}
-                    />
+                      width={60}
+                      tickMargin={8}
+                    >
+                      <Label
+                        value="Net Worth (₹ in Lakhs)"
+                        angle={-90}
+                        position="insideLeft"
+                        offset={20}
+                        dy={50}
+                        className="fill-slate-500 text-xs"
+                      />
+                    </YAxis>
                     <Tooltip
                       formatter={(value) => [`₹${formatLakhs(value)}L`, "Net Worth"]}
                       labelFormatter={(label) => `Year: ${label}`}
@@ -650,15 +670,48 @@ function App() {
                 </ResponsiveContainer>
               </div>
 
-              <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-4 h-[320px]">
+              <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-6 h-[400px]">
                 <div className="text-sm font-semibold text-slate-900 mb-3">Charges Paid by Financial Year</div>
                 <ResponsiveContainer>
-                  <BarChart data={summary.charges_by_fy}>
+                  <BarChart data={chargesChart} margin={{ top: 24, right: 30, left: 24, bottom: 46 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                    <XAxis dataKey="fy" />
-                    <YAxis />
-                    <Tooltip />
-                    <Bar dataKey="charges" fill="#ef4444" />
+                    <XAxis
+                      dataKey="fy"
+                      tickMargin={8}
+                      padding={{ left: 8, right: 8 }}
+                      angle={-30}
+                      textAnchor="end"
+                      height={40}
+                    />
+                    <YAxis
+                      tickFormatter={formatChargesAxis}
+                      width={60}
+                      tickMargin={8}
+                    >
+                      <Label
+                        value={`Charges (₹ in ${chargesUnit === "lakhs" ? "Lakhs" : "Thousands"})`}
+                        angle={-90}
+                        position="insideLeft"
+                        offset={0}
+                        dy={50}
+                        className="fill-slate-500 text-xs"
+                      />
+                    </YAxis>
+                    <Tooltip
+                      formatter={(value) => [
+                        `₹${formatIN(Math.abs(value))}`,
+                        "Charges",
+                      ]}
+                      labelFormatter={(label) => `Year: ${label}`}
+                    />
+                    <Bar dataKey="charges" fill="#ef4444" radius={[6, 6, 0, 0]}>
+                      <LabelList
+                        dataKey="charges"
+                        position="top"
+                        formatter={(value) => `₹${formatIN(value)}`}
+                        className="fill-slate-600 text-[10px]"
+                      />
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -865,3 +918,10 @@ function App() {
 }
 
 export default App;
+                    <Tooltip
+                      formatter={(value) => [
+                        `₹${formatIN(Math.abs(value))}`,
+                        "Charges",
+                      ]}
+                      labelFormatter={(label) => `Year: ${label}`}
+                    />
