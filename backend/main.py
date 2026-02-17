@@ -71,7 +71,8 @@ _PRICE_CACHE_TTL_SEC = 600
 
 @app.post("/ingest/preview")
 async def ingest_preview(
-    tradebook: UploadFile = File(...),
+    tradebook: Optional[UploadFile] = File(None),
+    tradebooks: Optional[List[UploadFile]] = File(None),
     contracts: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db)
 ):
@@ -220,12 +221,33 @@ async def ingest_preview(
             except Exception as e:
                 errors.append(f"Error reading {cf.filename}: {str(e)}")
 
-        # 2) Parse tradebook (required)
-        tb_content = await tradebook.read()
-        try:
-            trades_df = parse_tradebook(tb_content)
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+        # 2) Parse tradebook(s) (required)
+        selected_tradebooks = []
+        if tradebooks:
+            selected_tradebooks.extend(tradebooks)
+        if tradebook is not None:
+            selected_tradebooks.append(tradebook)
+
+        if not selected_tradebooks:
+            raise HTTPException(status_code=400, detail="At least one tradebook CSV is required.")
+
+        trades_df_list = []
+        tradebook_filenames = []
+        for tb in selected_tradebooks:
+            tb_content = await tb.read()
+            try:
+                one_df = parse_tradebook(tb_content)
+                trades_df_list.append(one_df)
+                tradebook_filenames.append(tb.filename)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"{tb.filename}: {str(e)}")
+
+        trades_df = pd.concat(trades_df_list, ignore_index=True)
+        before_dedupe = len(trades_df)
+        trades_df = trades_df.sort_values("trade_date").drop_duplicates(subset=["trade_id"], keep="last")
+        dropped_rows = before_dedupe - len(trades_df)
+        if dropped_rows > 0:
+            errors.append(f"Skipped {dropped_rows} duplicate trade rows by trade_id from uploaded tradebook files.")
 
         # 3) Prepare JSON payloads
         trade_rows = []
@@ -257,6 +279,7 @@ async def ingest_preview(
 
         summary = {
             "trades_count": len(trade_rows),
+            "tradebooks_count": len(tradebook_filenames),
             "contract_notes_count": len(contract_rows),
             "contract_trade_rows_count": len(contract_trade_rows),
             "contract_charge_rows_count": len(contract_charge_rows),
@@ -270,7 +293,7 @@ async def ingest_preview(
             id=batch_id,
             created_at=datetime.utcnow(),
             is_committed=False,
-            tradebook_filename=tradebook.filename,
+            tradebook_filename=", ".join(tradebook_filenames),
             contract_filenames=[c.filename for c in (contracts or [])],
             trade_rows=trade_rows,
             contract_rows=contract_rows,
@@ -436,10 +459,28 @@ def _load_symbol_alias_map(db: Session):
     rows = db.query(SymbolAlias).filter(SymbolAlias.active == True).all()
     return {r.from_symbol: r.to_symbol for r in rows}
 
+def _resolve_alias_symbol(symbol: str, alias_map: dict[str, str]):
+    curr = (symbol or "").strip().upper()
+    visited = set()
+    while curr in alias_map and curr not in visited:
+        visited.add(curr)
+        nxt = (alias_map.get(curr) or "").strip().upper()
+        if not nxt:
+            break
+        curr = nxt
+    return curr
+
+def _apply_aliases_to_trades_df(trades_df: pd.DataFrame, alias_map: dict[str, str]):
+    if trades_df.empty or "symbol" not in trades_df.columns:
+        return trades_df
+    df = trades_df.copy()
+    df["symbol"] = df["symbol"].astype(str).map(lambda s: _resolve_alias_symbol(s, alias_map))
+    return df
+
 def _resolve_latest_prices(symbols: list[str], alias_map: dict[str, str]):
     if not symbols:
         return {}, []
-    mapped = {s: alias_map.get(s, s) for s in symbols}
+    mapped = {s: _resolve_alias_symbol(s, alias_map) for s in symbols}
     tickers = [mapped[s] + ".NS" for s in symbols]
     live_prices = {}
     missing_symbols = []
@@ -515,6 +556,8 @@ def get_dashboard(fy: str, db: Session = Depends(get_db)):
         # 1. Load Data
         trades_df = pd.read_sql(db.query(Trade).statement, db.bind)
         notes_df = pd.read_sql(db.query(ContractNote).statement, db.bind)
+        alias_map = _load_symbol_alias_map(db)
+        trades_df = _apply_aliases_to_trades_df(trades_df, alias_map)
 
         if trades_df.empty:
             return {
@@ -540,7 +583,6 @@ def get_dashboard(fy: str, db: Session = Depends(get_db)):
         active_symbols = [s for s, batches in holdings_dict.items() if sum(b['qty'] for b in batches) > 0.01]
         live_prices = {}
         missing_symbols = []
-        alias_map = _load_symbol_alias_map(db)
         
         if active_symbols:
             try:
@@ -638,6 +680,8 @@ def get_report_summary(db: Session = Depends(get_db)):
         trades_df = pd.read_sql(db.query(Trade).statement, db.bind)
         charges_df = pd.read_sql(db.query(ContractNoteCharge).statement, db.bind)
         notes_df = pd.read_sql(db.query(ContractNote).statement, db.bind)
+        alias_map = _load_symbol_alias_map(db)
+        trades_df = _apply_aliases_to_trades_df(trades_df, alias_map)
 
         if trades_df.empty:
             return {"networth_by_fy": [], "charges_by_fy": []}
@@ -650,7 +694,6 @@ def get_report_summary(db: Session = Depends(get_db)):
         live_prices = {}
         if active_symbols:
             try:
-                alias_map = _load_symbol_alias_map(db)
                 live_prices, _ = _resolve_latest_prices(active_symbols, alias_map)
             except Exception as e:
                 _user_log(f"YFinance Error: {e}")
@@ -705,6 +748,8 @@ def get_report_realized(fy: str, db: Session = Depends(get_db)):
     try:
         trades_df = pd.read_sql(db.query(Trade).statement, db.bind)
         notes_df = pd.read_sql(db.query(ContractNote).statement, db.bind)
+        alias_map = _load_symbol_alias_map(db)
+        trades_df = _apply_aliases_to_trades_df(trades_df, alias_map)
         if trades_df.empty:
             return {"fy": fy, "rows": []}
 
