@@ -6,7 +6,9 @@ function DataImportView({
   handlePreview,
   handleCommit,
   preview,
-  setTradeFile,
+  tradeFiles,
+  contractFiles,
+  setTradeFiles,
   setContractFiles,
 }) {
   const [showSummaryModal, setShowSummaryModal] = React.useState(false);
@@ -23,6 +25,8 @@ function DataImportView({
     .filter((r) => r.security_desc && toNumber(r.quantity) && toNumber(r.quantity) !== 0);
 
   const contractChargeRows = preview?.contract_charge_rows_preview || [];
+  const selectedTradeFiles = tradeFiles ? Array.from(tradeFiles) : [];
+  const selectedContractFiles = contractFiles ? Array.from(contractFiles) : [];
 
   const normalizeNoteKey = (val) => {
     if (!val) return '';
@@ -371,15 +375,29 @@ function DataImportView({
                 ref={tradebookInputRef}
                 type="file"
                 accept=".csv"
-                onChange={(e) => setTradeFile(e.target.files[0])}
+                multiple
+                onChange={(e) => setTradeFiles(e.target.files?.length ? e.target.files : null)}
                 className="hidden"
               />
               <button
                 onClick={() => tradebookInputRef.current?.click()}
                 className="px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-500"
               >
-                Upload Tradebook
+                Upload Tradebook(s)
               </button>
+              <p className="mt-2 text-xs text-slate-600">
+                You can select multiple years in one go.
+              </p>
+              <div className="mt-2 text-xs text-slate-700">
+                {selectedTradeFiles.length > 0 ? `${selectedTradeFiles.length} file(s) selected` : 'No files selected'}
+              </div>
+              {selectedTradeFiles.length > 0 && (
+                <div className="mt-2 max-h-24 overflow-auto rounded border border-emerald-200 bg-white/80 p-2 text-xs text-slate-700">
+                  {selectedTradeFiles.map((f) => (
+                    <div key={`${f.name}-${f.lastModified}`}>{f.name}</div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4">
               <div className="text-xs uppercase tracking-widest text-slate-500 mb-2">Contract Notes (XLSX)</div>
@@ -388,7 +406,7 @@ function DataImportView({
                 type="file"
                 accept=".xlsx,.xls,.csv"
                 multiple
-                onChange={(e) => setContractFiles(e.target.files)}
+                onChange={(e) => setContractFiles(e.target.files?.length ? e.target.files : null)}
                 className="hidden"
               />
               <button
@@ -397,6 +415,19 @@ function DataImportView({
               >
                 Upload Contract Notes
               </button>
+              <p className="mt-2 text-xs text-slate-600">
+                Multiple files are supported.
+              </p>
+              <div className="mt-2 text-xs text-slate-700">
+                {selectedContractFiles.length > 0 ? `${selectedContractFiles.length} file(s) selected` : 'No files selected'}
+              </div>
+              {selectedContractFiles.length > 0 && (
+                <div className="mt-2 max-h-24 overflow-auto rounded border border-orange-200 bg-white/80 p-2 text-xs text-slate-700">
+                  {selectedContractFiles.map((f) => (
+                    <div key={`${f.name}-${f.lastModified}`}>{f.name}</div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

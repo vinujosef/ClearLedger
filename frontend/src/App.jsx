@@ -22,7 +22,7 @@ function App() {
   const [realized, setRealized] = useState([]);
   const [aliasEdits, setAliasEdits] = useState({});
   const [fy, setFy] = useState('');
-  const [tradeFile, setTradeFile] = useState(null);
+  const [tradeFiles, setTradeFiles] = useState(null);
   const [contractFiles, setContractFiles] = useState(null);
   const [loading, setLoading] = useState(false);
   const [preview, setPreview] = useState(null);
@@ -69,7 +69,11 @@ function App() {
   const handlePreview = async () => {
     setLoading(true);
     const formData = new FormData();
-    if (tradeFile) formData.append('tradebook', tradeFile);
+    if (tradeFiles) {
+      for (let i = 0; i < tradeFiles.length; i += 1) {
+        formData.append('tradebooks', tradeFiles[i]);
+      }
+    }
     if (contractFiles) {
       for (let i = 0; i < contractFiles.length; i += 1) {
         formData.append('contracts', contractFiles[i]);
@@ -102,6 +106,8 @@ function App() {
       alert(response.data.message);
       setPreview(null);
       setStagingId(null);
+      setTradeFiles(null);
+      setContractFiles(null);
       const fyValue = fy || currentFY();
       fetchDashboard(fyValue);
       fetchSummary();
@@ -174,7 +180,9 @@ function App() {
             handlePreview={handlePreview}
             handleCommit={handleCommit}
             preview={preview}
-            setTradeFile={setTradeFile}
+            tradeFiles={tradeFiles}
+            contractFiles={contractFiles}
+            setTradeFiles={setTradeFiles}
             setContractFiles={setContractFiles}
           />
         )}
