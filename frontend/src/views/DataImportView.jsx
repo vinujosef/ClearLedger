@@ -25,8 +25,20 @@ function DataImportView({
 
   const contractChargeRows = preview?.contract_charge_rows_preview || [];
   const splitImpactRows = preview?.split_impact_rows_preview || [];
-  const selectedTradeFiles = tradeFiles ? Array.from(tradeFiles) : [];
-  const selectedContractFiles = contractFiles ? Array.from(contractFiles) : [];
+  const selectedTradeFiles = tradeFiles || [];
+  const selectedContractFiles = contractFiles || [];
+  const mergeFiles = (existing, incoming) => {
+    const merged = [...(existing || [])];
+    const seen = new Set(merged.map((f) => `${f.name}::${f.size}::${f.lastModified}`));
+    for (const file of incoming) {
+      const key = `${file.name}::${file.size}::${file.lastModified}`;
+      if (!seen.has(key)) {
+        merged.push(file);
+        seen.add(key);
+      }
+    }
+    return merged;
+  };
 
   const normalizeNoteKey = (val) => {
     if (!val) return '';
@@ -563,7 +575,11 @@ function DataImportView({
                 type="file"
                 accept=".csv"
                 multiple
-                onChange={(e) => setTradeFiles(e.target.files?.length ? e.target.files : null)}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setTradeFiles((prev) => mergeFiles(prev, files));
+                  e.target.value = '';
+                }}
                 className="hidden"
               />
               <button
@@ -593,7 +609,11 @@ function DataImportView({
                 type="file"
                 accept=".xlsx,.xls,.csv"
                 multiple
-                onChange={(e) => setContractFiles(e.target.files?.length ? e.target.files : null)}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setContractFiles((prev) => mergeFiles(prev, files));
+                  e.target.value = '';
+                }}
                 className="hidden"
               />
               <button
