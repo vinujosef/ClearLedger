@@ -29,6 +29,8 @@ function App() {
   const [tradeFiles, setTradeFiles] = useState([]);
   const [contractFiles, setContractFiles] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewProgress, setPreviewProgress] = useState(null);
   const [preview, setPreview] = useState(null);
   const [stagingId, setStagingId] = useState(null);
   const [holdingsSearch, setHoldingsSearch] = useState('');
@@ -72,7 +74,13 @@ function App() {
 
   const handlePreview = async () => {
     setLoading(true);
+    setPreviewLoading(true);
+    setPreviewProgress(null);
+    const progressId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `preview-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     const formData = new FormData();
+    formData.append('progress_id', progressId);
     if (tradeFiles.length > 0) {
       for (let i = 0; i < tradeFiles.length; i += 1) {
         formData.append('tradebooks', tradeFiles[i]);
@@ -84,7 +92,16 @@ function App() {
       }
     }
 
+    let pollTimer = null;
     try {
+      pollTimer = window.setInterval(async () => {
+        try {
+          const p = await axios.get(`${API_URL}/ingest/progress/${progressId}`);
+          setPreviewProgress(p.data);
+        } catch (e) {
+          // Progress may not be initialized yet; ignore transient polling errors.
+        }
+      }, 400);
       const response = await axios.post(`${API_URL}/ingest/preview`, formData);
       setPreview(response.data);
       setStagingId(response.data.staging_id);
@@ -98,6 +115,16 @@ function App() {
         alert('Unknown Error Occurred.');
       }
     } finally {
+      if (pollTimer) {
+        window.clearInterval(pollTimer);
+      }
+      try {
+        const p = await axios.get(`${API_URL}/ingest/progress/${progressId}`);
+        setPreviewProgress(p.data);
+      } catch (e) {
+        // ignore
+      }
+      setPreviewLoading(false);
       setLoading(false);
     }
   };
@@ -288,10 +315,12 @@ function App() {
       <div className="max-w-screen-2xl mx-auto px-4 pt-5 pb-6">
         <main className="brand-canvas mt-5 rounded-[28px] p-4 lg:p-6">
           {view === 'import' && (
-            <DataImportView
-              loading={loading}
-              handlePreview={handlePreview}
-              handleCommit={handleCommit}
+          <DataImportView
+            loading={loading}
+            previewLoading={previewLoading}
+            previewProgress={previewProgress}
+            handlePreview={handlePreview}
+            handleCommit={handleCommit}
               preview={preview}
               tradeFiles={tradeFiles}
               contractFiles={contractFiles}

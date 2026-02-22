@@ -3,6 +3,8 @@ import { toNumber, formatIN } from '../utils/formatters';
 
 function DataImportView({
   loading,
+  previewLoading,
+  previewProgress,
   handlePreview,
   handleCommit,
   preview,
@@ -27,6 +29,7 @@ function DataImportView({
   const splitImpactRows = preview?.split_impact_rows_preview || [];
   const selectedTradeFiles = tradeFiles || [];
   const selectedContractFiles = contractFiles || [];
+  const totalItems = selectedTradeFiles.length + selectedContractFiles.length;
   const mergeFiles = (existing, incoming) => {
     const merged = [...(existing || [])];
     const seen = new Set(merged.map((f) => `${f.name}::${f.size}::${f.lastModified}`));
@@ -266,24 +269,68 @@ function DataImportView({
   }, [selectedRow, selectedLinkId]);
 
   React.useEffect(() => {
-    setShowSummaryModal(Boolean(preview));
-  }, [preview]);
+    if (previewLoading) {
+      setShowSummaryModal(true);
+    }
+  }, [previewLoading]);
+
+  React.useEffect(() => {
+    if (!previewLoading && preview) {
+      setShowSummaryModal(true);
+    }
+    if (!previewLoading && !preview) {
+      setShowSummaryModal(false);
+    }
+  }, [previewLoading, preview]);
+
+  const backendTotal = Number(previewProgress?.total_files || 0);
+  const backendProcessed = Number(previewProgress?.processed_files || 0);
+  const effectiveTotal = backendTotal > 0 ? backendTotal : totalItems;
+  const processedCount = Math.min(backendProcessed, effectiveTotal);
+  const leftCount = Math.max(effectiveTotal - processedCount, 0);
+  const progressPct = effectiveTotal > 0 ? Math.min((processedCount / effectiveTotal) * 100, 100) : 0;
+  const progressMessage = previewProgress?.message || 'Preparing preview...';
+  const fmtCount = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
   return (
     <div className="mt-8 rounded-2xl bg-white border border-slate-200 shadow-sm p-6">
-      {showSummaryModal && preview && (
+      {showSummaryModal && (previewLoading || preview) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
           <div className="w-full max-w-[96vw] max-h-[92vh] rounded-2xl bg-white border border-slate-200 shadow-xl p-6 flex flex-col">
             <div className="flex items-center justify-between shrink-0">
-              <h3 className="text-lg font-semibold text-slate-900">Import Summary</h3>
-              <button
-                type="button"
-                onClick={() => setShowSummaryModal(false)}
-                className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50"
-              >
-                Close
-              </button>
+              <h3 className="text-lg font-semibold text-slate-900">{previewLoading ? 'Processing Upload' : 'Import Summary'}</h3>
+              {!previewLoading && (
+                <button
+                  type="button"
+                  onClick={() => setShowSummaryModal(false)}
+                  className="rounded-lg border border-slate-200 px-3 py-1 text-sm text-slate-600 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+              )}
             </div>
+            {previewLoading ? (
+              <div className="mt-4 space-y-4">
+                <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
+                  <div className="text-sm font-semibold text-slate-900">Hang tight, we are parsing and matching your uploaded files.</div>
+                  <div className="mt-2 text-sm text-slate-700">
+                    Processed: <span className="font-semibold">{fmtCount(processedCount)}</span> / {fmtCount(effectiveTotal)}
+                    <span className="mx-2 text-slate-400">•</span>
+                    Left: <span className="font-semibold">{fmtCount(leftCount)}</span>
+                  </div>
+                  <div className="mt-3 h-2 w-full rounded-full bg-slate-200 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-sky-500 via-indigo-500 to-violet-500 transition-all duration-200"
+                      style={{ width: `${progressPct}%` }}
+                    />
+                  </div>
+                  <div className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+                    <span className="inline-block h-2 w-2 rounded-full bg-indigo-500 animate-pulse" />
+                    {progressMessage}
+                  </div>
+                </div>
+              </div>
+            ) : (
             <div className="mt-4 overflow-y-auto pr-1 space-y-6">
               {preview.summary.missing_contract_note_dates.length > 0 && (
                 <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
@@ -496,6 +543,7 @@ function DataImportView({
                 )}
               </div>
             </div>
+            )}
 
             <div className="mt-5 flex justify-end gap-2 shrink-0">
               <button
@@ -508,10 +556,10 @@ function DataImportView({
               <button
                 type="button"
                 onClick={handleCommit}
-                disabled={loading}
+                disabled={loading || previewLoading || !preview}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold ${loading ? 'bg-slate-200 text-slate-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}
               >
-                {loading ? 'Committing...' : 'Confirm & Commit'}
+                {loading ? 'Committing...' : 'Confirm'}
               </button>
             </div>
           </div>

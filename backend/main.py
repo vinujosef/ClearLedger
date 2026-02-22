@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -67,6 +67,15 @@ def get_db():
 # Keyed by the requested symbols + their mapped tickers to stay consistent.
 _PRICE_CACHE = {}
 _PRICE_CACHE_TTL_SEC = 600
+_INGEST_PROGRESS = {}
+
+def _progress_update(progress_id: Optional[str], **fields):
+    if not progress_id:
+        return
+    current = _INGEST_PROGRESS.get(progress_id, {})
+    current.update(fields)
+    current["updated_at"] = datetime.utcnow().isoformat()
+    _INGEST_PROGRESS[progress_id] = current
 
 def _fetch_yfinance_split_actions(symbol: str, start_date: date, end_date: date):
     actions = []
@@ -301,12 +310,34 @@ def _log_split_impacts_for_preview(fifo_trades_df: pd.DataFrame, corporate_actio
 
 @app.post("/ingest/preview")
 async def ingest_preview(
+    progress_id: Optional[str] = Form(None),
     tradebook: Optional[UploadFile] = File(None),
     tradebooks: Optional[List[UploadFile]] = File(None),
     contracts: Optional[List[UploadFile]] = File(None),
     db: Session = Depends(get_db)
 ):
     try:
+        # Collect selected tradebooks early so progress can include total file count.
+        selected_tradebooks = []
+        if tradebooks:
+            selected_tradebooks.extend(tradebooks)
+        if tradebook is not None:
+            selected_tradebooks.append(tradebook)
+        if not selected_tradebooks:
+            raise HTTPException(status_code=400, detail="At least one tradebook CSV is required.")
+
+        total_files = len(selected_tradebooks) + len(contracts or [])
+        processed_files = 0.0
+        _progress_update(
+            progress_id,
+            status="running",
+            stage="starting",
+            message="Starting preview generation...",
+            total_files=total_files,
+            processed_files=processed_files,
+            left_files=max(total_files - processed_files, 0),
+        )
+
         # 1) Parse contract notes
         errors = []
         if not contracts:
@@ -333,9 +364,34 @@ async def ingest_preview(
             return f_val
 
         for cf in (contracts or []):
+            completed_before = processed_files
             try:
+                _progress_update(
+                    progress_id,
+                    stage="contracts",
+                    message=f"Parsing contract notes: {cf.filename}",
+                    total_files=total_files,
+                    processed_files=processed_files,
+                    left_files=max(total_files - processed_files, 0),
+                )
                 content = await cf.read()
-                parsed_list = parse_contract_note(content)
+
+                def _sheet_progress(done_sheets: int, total_sheets: int, sheet_name: str):
+                    total = max(int(total_sheets or 1), 1)
+                    done = max(min(int(done_sheets or 0), total), 0)
+                    # Keep 5% reserved for finalization so users can see in-file progress.
+                    in_file_ratio = (done / total) * 0.95
+                    in_file_progress = completed_before + in_file_ratio
+                    _progress_update(
+                        progress_id,
+                        stage="contracts",
+                        message=f"Parsing {cf.filename} ({done}/{total} sheets)",
+                        total_files=total_files,
+                        processed_files=round(in_file_progress, 3),
+                        left_files=max(total_files - in_file_progress, 0),
+                    )
+
+                parsed_list = parse_contract_note(content, progress_cb=_sheet_progress)
                 if parsed_list:
                     for data in parsed_list:
                         for warn in data.get("warnings", []):
@@ -450,27 +506,55 @@ async def ingest_preview(
                     errors.append(f"Could not parse {cf.filename} (Format issue?)")
             except Exception as e:
                 errors.append(f"Error reading {cf.filename}: {str(e)}")
+            finally:
+                processed_files += 1
+                _progress_update(
+                    progress_id,
+                    stage="contracts",
+                    message="Contract notes parsed.",
+                    total_files=total_files,
+                    processed_files=processed_files,
+                    left_files=max(total_files - processed_files, 0),
+                )
 
         # 2) Parse tradebook(s) (required)
-        selected_tradebooks = []
-        if tradebooks:
-            selected_tradebooks.extend(tradebooks)
-        if tradebook is not None:
-            selected_tradebooks.append(tradebook)
-
-        if not selected_tradebooks:
-            raise HTTPException(status_code=400, detail="At least one tradebook CSV is required.")
-
         trades_df_list = []
         tradebook_filenames = []
         for tb in selected_tradebooks:
+            completed_before = processed_files
+            _progress_update(
+                progress_id,
+                stage="tradebooks",
+                message=f"Parsing tradebook: {tb.filename}",
+                total_files=total_files,
+                processed_files=round(completed_before + 0.15, 3),
+                left_files=max(total_files - (completed_before + 0.15), 0),
+            )
             tb_content = await tb.read()
             try:
                 one_df = parse_tradebook(tb_content)
+                _progress_update(
+                    progress_id,
+                    stage="tradebooks",
+                    message=f"Validating tradebook rows: {tb.filename}",
+                    total_files=total_files,
+                    processed_files=round(completed_before + 0.85, 3),
+                    left_files=max(total_files - (completed_before + 0.85), 0),
+                )
                 trades_df_list.append(one_df)
                 tradebook_filenames.append(tb.filename)
             except ValueError as e:
                 raise HTTPException(status_code=400, detail=f"{tb.filename}: {str(e)}")
+            finally:
+                processed_files += 1
+                _progress_update(
+                    progress_id,
+                    stage="tradebooks",
+                    message="Tradebooks parsed.",
+                    total_files=total_files,
+                    processed_files=processed_files,
+                    left_files=max(total_files - processed_files, 0),
+                )
 
         trades_df = pd.concat(trades_df_list, ignore_index=True)
         before_dedupe = len(trades_df)
@@ -558,6 +642,16 @@ async def ingest_preview(
         db.add(batch)
         db.commit()
 
+        _progress_update(
+            progress_id,
+            status="done",
+            stage="complete",
+            message="Preview ready.",
+            total_files=total_files,
+            processed_files=total_files,
+            left_files=0,
+        )
+
         return {
             "staging_id": batch_id,
             "summary": summary,
@@ -568,10 +662,29 @@ async def ingest_preview(
             "split_impact_rows_preview": split_impact_rows[:200],
         }
     except HTTPException as he:
+        _progress_update(
+            progress_id,
+            status="error",
+            stage="error",
+            message=str(he.detail),
+        )
         raise he
     except Exception as e:
         _user_log(f"Preview Error: {e}")
+        _progress_update(
+            progress_id,
+            status="error",
+            stage="error",
+            message=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/ingest/progress/{progress_id}")
+def ingest_progress(progress_id: str):
+    row = _INGEST_PROGRESS.get(progress_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Progress id not found")
+    return row
 
 @app.post("/ingest/commit")
 def ingest_commit(payload: dict, db: Session = Depends(get_db)):

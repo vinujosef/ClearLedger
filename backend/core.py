@@ -309,7 +309,7 @@ def _parse_contract_note_df(df: pd.DataFrame, sheet_name: str):
         "warnings": warnings,
     }
 
-def parse_contract_note(content: bytes):
+def parse_contract_note(content: bytes, progress_cb=None):
     """
     Parses Zerodha Contract Note (supports .xlsx and .csv).
     Returns a list of parsed sheets with trades + charges.
@@ -320,16 +320,21 @@ def parse_contract_note(content: bytes):
         # STRATEGY 1: Try reading as Excel (.xlsx) first (all sheets)
         try:
             sheets = pd.read_excel(io.BytesIO(content), sheet_name=None, header=None, engine='openpyxl')
-            for sheet_name, df in sheets.items():
+            total_sheets = max(len(sheets), 1)
+            for idx, (sheet_name, df) in enumerate(sheets.items(), start=1):
                 parsed = _parse_contract_note_df(df, sheet_name)
                 if parsed:
                     parsed_rows.append(parsed)
+                if callable(progress_cb):
+                    progress_cb(idx, total_sheets, sheet_name)
         except:
             # STRATEGY 2: Fallback to CSV
             df = pd.read_csv(io.BytesIO(content), header=None)
             parsed = _parse_contract_note_df(df, "Sheet1")
             if parsed:
                 parsed_rows.append(parsed)
+            if callable(progress_cb):
+                progress_cb(1, 1, "Sheet1")
 
         if not parsed_rows:
             _user_log("[parse_contract_note] No sheets matched the expected fixed schema.")
