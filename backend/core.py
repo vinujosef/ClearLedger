@@ -311,7 +311,7 @@ def _parse_contract_note_df(df: pd.DataFrame, sheet_name: str):
 
 def parse_contract_note(content: bytes, progress_cb=None):
     """
-    Parses Zerodha Contract Note (supports .xlsx and .csv).
+    Parses broker contract notes (supports .xlsx and .csv).
     Returns a list of parsed sheets with trades + charges.
     """
     try:
@@ -347,7 +347,7 @@ def parse_contract_note(content: bytes, progress_cb=None):
 
 def parse_tradebook(content: bytes):
     """
-    Parse Zerodha Tradebook CSV into a normalized dataframe.
+    Parse broker tradebook CSV into a normalized dataframe.
     """
     try:
         df = pd.read_csv(io.BytesIO(content))

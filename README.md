@@ -1,6 +1,6 @@
-# 📈 Investment Ledger
+# 📈 ClearLedger
 
-Track equity trades with FIFO accounting, contract note reconciliation, and a clean FY dashboard that matches Zerodha-style average costs.
+Track equity trades with FIFO accounting, contract note reconciliation, and a clean FY dashboard.
 
 ## Quick Start
 1. Ensure Docker Desktop is running.
@@ -8,7 +8,7 @@ Track equity trades with FIFO accounting, contract note reconciliation, and a cl
 3. Open: `http://localhost:3000`
 
 ### Trade Import
-Use Zerodha Console links and upload files manually.
+Use your broker export files and upload them manually.
 
 ## Features
 - **Preview → Commit ingestion:** Upload Tradebook CSV + Contract Notes, review the preview, then commit.
@@ -17,7 +17,7 @@ Use Zerodha Console links and upload files manually.
 - **Charges breakdown:** CGST/SGST/IGST, STT, SEBI, exchange charges, stamp duty, net payable.
 - **FY dashboards:** Net worth, YoY delta, realized P&L, and charts for net worth + charges by FY.
 - **Holdings + realized tables:** Live holdings with P&L (sorted by P&L), plus realized trades per FY.
-- **Zerodha-style average cost:** Holdings and realized P&L exclude charges; charges remain reported separately.
+- **Average cost model:** Holdings and realized P&L exclude charges; charges remain reported separately.
 - **Symbol alias mapping:** Fix missing Yahoo Finance tickers (e.g., `HDFC` → `HDFCBANK`).
 
 ## Stack

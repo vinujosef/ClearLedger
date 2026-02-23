@@ -568,34 +568,22 @@ function DataImportView({
 
       <div className="space-y-5">
         <div className="rounded-2xl border border-sky-200 p-5 bg-gradient-to-br from-sky-50 via-cyan-50 to-white shadow-sm">
-          <div className="text-lg font-semibold text-slate-900">Zerodha Console</div>
+          <div className="text-lg font-semibold text-slate-900">Broker Exports</div>
           <div className="mt-2 text-sm text-slate-600">
-            Download files year by year from when you started using Zerodha (through Zerodha Console)
+            Export your tradebook and contract note files from your broker portal, then upload them here.
           </div>
           <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
               <div className="text-sm font-semibold text-slate-900">Tradebook</div>
               <p className="mt-1 text-xs text-slate-600">
-                Open the Tradebook page and download each year as CSV.
+                Download one or more years in CSV format.
               </p>
-              <button
-                onClick={() => window.open('https://console.zerodha.com/reports/tradebook', '_blank', 'noopener,noreferrer')}
-                className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold bg-emerald-600 text-white hover:bg-emerald-500"
-              >
-                Open Tradebook
-              </button>
             </div>
             <div className="rounded-xl border border-orange-200 bg-orange-50/60 p-4">
               <div className="text-sm font-semibold text-slate-900">Contract Notes</div>
               <p className="mt-1 text-xs text-slate-600">
-                Open Downloads and get contract notes in XLSX format for each year.
+                Download contract notes in XLSX/CSV format.
               </p>
-              <button
-                onClick={() => window.open('https://console.zerodha.com/reports/downloads', '_blank', 'noopener,noreferrer')}
-                className="mt-3 px-4 py-2 rounded-lg text-sm font-semibold bg-orange-500 text-white hover:bg-orange-400"
-              >
-                Open Contract Notes
-              </button>
             </div>
           </div>
         </div>

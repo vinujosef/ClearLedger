@@ -190,6 +190,12 @@ function App() {
   );
   const totalPnl = totals.current - totals.invested;
   const totalPnlPct = totals.invested > 0 ? (totalPnl / totals.invested) * 100 : 0;
+  const dashboardSectionLabelMap = {
+    'current-holdings': 'Current Holdings',
+    'past-holding': 'Past Holdings',
+    'net-worth': 'Net Worth Over Time',
+    charges: 'Charges Paid by Financial Year',
+  };
 
   useEffect(() => {
     const onDocClick = (event) => {
@@ -310,6 +316,7 @@ function App() {
             </p>
           </div>
         </section>
+
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-4 pt-5 pb-6">
