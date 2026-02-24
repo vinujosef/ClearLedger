@@ -46,10 +46,6 @@ function DashboardView({
   data,
   summary,
   realized,
-  fy,
-  setFy,
-  fetchDashboard,
-  fetchRealized,
   aliasEdits,
   setAliasEdits,
   saveAliases,
@@ -84,8 +80,7 @@ function DashboardView({
   const [holdingsSortKey, setHoldingsSortKey] = React.useState('pnl');
   const [holdingsSortDir, setHoldingsSortDir] = React.useState('desc');
   const [realizedSortKey, setRealizedSortKey] = React.useState('sell_date');
-  const [realizedSortDir, setRealizedSortDir] = React.useState('desc');
-  const [realizedFilter, setRealizedFilter] = React.useState('all');
+  const [realizedSortDir, setRealizedSortDir] = React.useState('asc');
 
   const toFyNumber = (fyVal) => Number(String(fyVal || '').replace('FY', '')) || 0;
   const networthData = [...(summary.networth_by_fy || [])].sort((a, b) => (
@@ -119,11 +114,6 @@ function DashboardView({
   };
 
   const realizedRows = [...(realized || [])]
-    .filter((r) => {
-      if (realizedFilter === 'gain') return Number(r.realized_pnl || 0) > 0;
-      if (realizedFilter === 'loss') return Number(r.realized_pnl || 0) < 0;
-      return true;
-    })
     .sort((a, b) => {
       const direction = realizedSortDir === 'asc' ? 1 : -1;
       if (realizedSortKey === 'symbol') {
@@ -136,6 +126,23 @@ function DashboardView({
       }
       return direction * (Number(a[realizedSortKey] || 0) - Number(b[realizedSortKey] || 0));
     });
+  const filteredRealizedRows = realizedQuery
+    ? realizedRows.filter((r) => String(r.symbol || '').toUpperCase().includes(realizedQuery))
+    : realizedRows;
+
+  const handleRealizedSort = (key) => {
+    if (realizedSortKey === key) {
+      setRealizedSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setRealizedSortKey(key);
+    setRealizedSortDir('asc');
+  };
+
+  const realizedSortMark = (key) => {
+    if (realizedSortKey !== key) return '';
+    return realizedSortDir === 'asc' ? '↑' : '↓';
+  };
 
   return (
     <div className="dashboard-surface mt-2 space-y-5">
@@ -326,44 +333,38 @@ function DashboardView({
         <div id="dashboard-past-holding" className="surface-block overflow-hidden">
         <div className="px-4 py-3 border-b flex items-center justify-between gap-4">
           <div>
-            <div className="text-3xl font-semibold tracking-tight text-slate-900">Past Holdings (Realized)</div>
+            <div className="text-3xl font-semibold tracking-tight text-slate-900">Past Holdings</div>
           </div>
           <div className="flex items-center gap-2">
             <SearchInput value={realizedSearch} onChange={(e) => setRealizedSearch(e.target.value)} ariaLabel="Search past holdings by symbol" />
-            <select value={realizedFilter} onChange={(e) => setRealizedFilter(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs">
-              <option value="all">All</option>
-              <option value="gain">Only Gains</option>
-              <option value="loss">Only Losses</option>
-            </select>
-            <select value={realizedSortKey} onChange={(e) => setRealizedSortKey(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs">
-              <option value="sell_date">Sort: Sell Date</option>
-              <option value="symbol">Sort: Symbol</option>
-              <option value="sell_qty">Sort: Qty</option>
-              <option value="realized_pnl">Sort: Realized P&L</option>
-            </select>
-            <select value={realizedSortDir} onChange={(e) => setRealizedSortDir(e.target.value)} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs">
-              <option value="desc">Desc</option>
-              <option value="asc">Asc</option>
-            </select>
           </div>
         </div>
         <table className="w-full text-sm">
           <thead className="text-xs uppercase tracking-widest text-slate-400 border-b bg-slate-50">
             <tr className="text-left">
-              <th className="px-4 py-3">Symbol</th>
-              <th className="px-4 py-3">Sell Date</th>
+              <th className="px-4 py-3 cursor-pointer select-none hover:text-slate-700" onClick={() => handleRealizedSort('symbol')}>
+                <span className="inline-flex items-center gap-1">
+                  Symbol <span className="text-[10px]">{realizedSortMark('symbol')}</span>
+                </span>
+              </th>
+              <th className="px-4 py-3 cursor-pointer select-none hover:text-slate-700" onClick={() => handleRealizedSort('sell_date')}>
+                <span className="inline-flex items-center gap-1">
+                  Sell Date <span className="text-[10px]">{realizedSortMark('sell_date')}</span>
+                </span>
+              </th>
               <th className="px-4 py-3">Qty</th>
               <th className="px-4 py-3">Avg Buy</th>
               <th className="px-4 py-3">Sell Price</th>
-              <th className="px-4 py-3">Realized P&L</th>
+              <th className="px-4 py-3 cursor-pointer select-none hover:text-slate-700" onClick={() => handleRealizedSort('realized_pnl')}>
+                <span className="inline-flex items-center gap-1">
+                  Realized P&amp;L <span className="text-[10px]">{realizedSortMark('realized_pnl')}</span>
+                </span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {realizedRows.length > 0 ? realizedRows.map((r, idx) => {
-              const sym = String(r.symbol || '').toUpperCase();
-              const hit = !realizedQuery || sym.includes(realizedQuery);
-              return (
-                <tr key={`${r.symbol}-${idx}`} className={hit ? '' : 'opacity-20'}>
+            {filteredRealizedRows.length > 0 ? filteredRealizedRows.map((r, idx) => (
+                <tr key={`${r.symbol}-${idx}`}>
                   <td className="px-4 py-3 font-semibold">{r.symbol}</td>
                   <td className="px-4 py-3">{r.sell_date}</td>
                   <td className="px-4 py-3">{r.sell_qty}</td>
@@ -371,8 +372,7 @@ function DashboardView({
                   <td className="px-4 py-3">{r.sell_price}</td>
                   <td className={`px-4 py-3 ${r.realized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{r.realized_pnl}</td>
                 </tr>
-              );
-            }) : (
+            )) : (
               <tr>
                 <td className="px-4 py-4 text-sm text-slate-400" colSpan="6">No past holdings match the selected filters.</td>
               </tr>
@@ -423,31 +423,6 @@ function DashboardView({
         </div>
       )}
 
-      {showPastHolding && (
-      <div className="text-right">
-        <div className="text-xs uppercase tracking-widest text-slate-400">Financial Year</div>
-        <select
-          value={fy}
-          onChange={(e) => {
-            const nextFY = e.target.value;
-            setFy(nextFY);
-            fetchDashboard(nextFY);
-            fetchRealized(nextFY);
-          }}
-          className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm"
-        >
-          {[...new Set([fy, ...(data.fy_list || [])])].filter(Boolean).map((f) => (
-            <option key={f} value={f}>{f}</option>
-          ))}
-        </select>
-        <div className="text-sm mt-3">
-          <span className="text-slate-500">Realized P&L ({fy}): </span>
-          <span className={`font-semibold ${data.realized_pnl >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            {data.realized_pnl >= 0 ? '+' : ''}₹{formatIN(data.realized_pnl)}
-          </span>
-        </div>
-      </div>
-      )}
     </div>
   );
 }

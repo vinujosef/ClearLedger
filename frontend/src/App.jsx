@@ -63,9 +63,12 @@ function App() {
     }
   };
 
-  const fetchRealized = async (fyValue) => {
+  const fetchRealized = async (fyValue = null) => {
     try {
-      const res = await axios.get(`${API_URL}/reports/realized`, { params: { fy: fyValue } });
+      const res = await axios.get(
+        `${API_URL}/reports/realized`,
+        fyValue ? { params: { fy: fyValue } } : undefined
+      );
       setRealized(res.data.rows || []);
     } catch (err) {
       console.error('Realized Error:', err);
@@ -142,7 +145,7 @@ function App() {
       const fyValue = fy || currentFY();
       fetchDashboard(fyValue);
       fetchSummary();
-      fetchRealized(fyValue);
+      fetchRealized();
       setView('dashboard');
     } catch (error) {
       console.error('Commit Error:', error);
@@ -164,7 +167,7 @@ function App() {
       const fyValue = fy || currentFY();
       fetchDashboard(fyValue);
       fetchSummary();
-      fetchRealized(fyValue);
+      fetchRealized();
       setAliasEdits({});
     } catch (err) {
       console.error('Alias save error:', err);
@@ -177,7 +180,7 @@ function App() {
     setFy(initialFY);
     fetchDashboard(initialFY);
     fetchSummary();
-    fetchRealized(initialFY);
+    fetchRealized();
   }, []);
 
   const totals = (data.holdings || []).reduce(

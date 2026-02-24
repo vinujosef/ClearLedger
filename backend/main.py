@@ -1114,7 +1114,7 @@ def get_report_summary(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/reports/realized")
-def get_report_realized(fy: str, db: Session = Depends(get_db)):
+def get_report_realized(fy: Optional[str] = None, db: Session = Depends(get_db)):
     try:
         trades_df = pd.read_sql(db.query(Trade).statement, db.bind)
         notes_df = pd.read_sql(db.query(ContractNote).statement, db.bind)
@@ -1127,7 +1127,7 @@ def get_report_realized(fy: str, db: Session = Depends(get_db)):
         realized = calculate_realized_gains(trades_df, notes_df, corporate_actions_df=corporate_actions_df)
         rows = []
         for r in realized:
-            if fy_label(r["sell_date"]) == fy:
+            if fy is None or fy_label(r["sell_date"]) == fy:
                 rows.append({
                     "symbol": r["symbol"],
                     "sell_date": r["sell_date"].isoformat(),
