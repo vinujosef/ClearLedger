@@ -53,6 +53,11 @@ function DashboardView({
   setHoldingsSearch,
   realizedSearch,
   setRealizedSearch,
+  taxCountries,
+  taxReport,
+  taxReportLoading,
+  taxReportError,
+  fetchTaxReport,
 }) {
   const years = (summary.networth_by_fy || [])
     .map((e) => String(e.fy || '').replace('FY', ''))
@@ -75,6 +80,7 @@ function DashboardView({
   const showCharges = dashboardSection === 'charges';
   const showCurrentHoldings = dashboardSection === 'current-holdings';
   const showPastHolding = dashboardSection === 'past-holding';
+  const showTaxReport = dashboardSection === 'tax-report';
   const [networthOrder, setNetworthOrder] = React.useState('asc');
   const [chargesOrder, setChargesOrder] = React.useState('asc');
   const [holdingsSortKey, setHoldingsSortKey] = React.useState('pnl');
@@ -86,6 +92,11 @@ function DashboardView({
   const [analyticsRange, setAnalyticsRange] = React.useState(`year-${currentYear}`);
   const [customFrom, setCustomFrom] = React.useState('');
   const [customTo, setCustomTo] = React.useState('');
+  const [taxCountryCode, setTaxCountryCode] = React.useState('FI');
+  const [taxYear, setTaxYear] = React.useState(new Date().getFullYear());
+  const [taxMethodMode, setTaxMethodMode] = React.useState('auto_best_per_sale');
+  const [taxPriorLoss, setTaxPriorLoss] = React.useState('0');
+  const [taxAutoLoaded, setTaxAutoLoaded] = React.useState(false);
 
   const toFyNumber = (fyVal) => Number(String(fyVal || '').replace('FY', '')) || 0;
   const networthData = [...(summary.networth_by_fy || [])].sort((a, b) => (
@@ -230,6 +241,27 @@ function DashboardView({
   const symbolPnlRows = Object.entries(symbolPnlMap).map(([symbol, pnl]) => ({ symbol, pnl }));
   const allGainers = symbolPnlRows.filter((r) => r.pnl > 0).sort((a, b) => b.pnl - a.pnl);
   const allLosers = symbolPnlRows.filter((r) => r.pnl < 0).sort((a, b) => a.pnl - b.pnl);
+  const taxYearOptions = React.useMemo(() => {
+    const years = new Set(
+      (realized || [])
+        .map((r) => new Date(`${r.sell_date}T00:00:00`).getFullYear())
+        .filter((y) => Number.isFinite(y)),
+    );
+    years.add(new Date().getFullYear());
+    return [...years].sort((a, b) => b - a);
+  }, [realized]);
+
+  React.useEffect(() => {
+    if (!showTaxReport || taxAutoLoaded) return;
+    fetchTaxReport({
+      countryCode: taxCountryCode,
+      taxYear,
+      methodMode: taxMethodMode,
+      priorLossCarryforward: Number(taxPriorLoss || 0),
+      includeRows: true,
+    });
+    setTaxAutoLoaded(true);
+  }, [showTaxReport, taxAutoLoaded, taxCountryCode, taxYear, taxMethodMode, taxPriorLoss, fetchTaxReport]);
 
   const handleRealizedSort = (key) => {
     if (realizedSortKey === key) {
@@ -618,6 +650,160 @@ function DashboardView({
             </div>
           </div>
         )}
+        </div>
+      )}
+
+      {showTaxReport && (
+        <div id="dashboard-tax-report" className="surface-block overflow-hidden">
+          <div className="px-4 py-3 border-b flex flex-wrap items-center justify-between gap-3">
+            <div className="text-3xl font-semibold tracking-tight text-slate-900">Report Capital Gain/Loss Per Country</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={taxCountryCode}
+                onChange={(e) => setTaxCountryCode(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                {(taxCountries && taxCountries.length > 0 ? taxCountries : ['FI']).map((code) => (
+                  <option key={code} value={code}>{code === 'FI' ? 'Finland' : code}</option>
+                ))}
+              </select>
+              <select
+                value={taxYear}
+                onChange={(e) => setTaxYear(Number(e.target.value))}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                {taxYearOptions.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+              <select
+                value={taxMethodMode}
+                onChange={(e) => setTaxMethodMode(e.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                <option value="auto_best_per_sale">Auto (Best Per Sale)</option>
+                <option value="actual">Actual Cost</option>
+                <option value="deemed">Deemed Acquisition Cost</option>
+              </select>
+              <div className="flex flex-col">
+                <label className="text-[11px] uppercase tracking-wide text-slate-500">Prior loss carryforward (€)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={taxPriorLoss}
+                  onChange={(e) => setTaxPriorLoss(e.target.value)}
+                  className="w-44 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                  placeholder="0.00"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchTaxReport({
+                  countryCode: taxCountryCode,
+                  taxYear,
+                  methodMode: taxMethodMode,
+                  priorLossCarryforward: Number(taxPriorLoss || 0),
+                  includeRows: true,
+                })}
+                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Calculate
+              </button>
+            </div>
+            <div className="w-full text-xs text-slate-500">
+              Auto (Best Per Sale) compares Actual vs Deemed for each sale row and uses the lower taxable gain/loss for that row.
+            </div>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {taxReportLoading && <div className="text-sm text-slate-600">Calculating tax report...</div>}
+            {taxReportError && <div className="text-sm text-rose-600">{taxReportError}</div>}
+
+            {taxReport && !taxReportLoading && (
+              <>
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <div className="font-semibold">Compliance Notice</div>
+                  <div className="mt-1">
+                    {taxReport.disclaimer || 'Estimate only. Use as a reporting aid and validate final values against official Vero instructions/forms for your filing year and edge cases.'}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  <div className="font-semibold text-slate-900">Formula Used</div>
+                  <div className="mt-1 space-y-1">
+                    {(taxReport.formula_lines && taxReport.formula_lines.length > 0
+                      ? taxReport.formula_lines
+                      : String(taxReport.formula_text || '').split('.').map((line) => line.trim()).filter(Boolean)
+                    ).map((line, idx) => (
+                      <div key={`formula-${idx}`}>{line}</div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Proceeds</div>
+                    <div className="text-lg font-semibold text-slate-900">€{formatIN(taxReport.totals?.proceeds || 0)}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Selected Gain/Loss</div>
+                    <div className={`text-lg font-semibold ${(taxReport.totals?.selected_gain_loss_after_adjustments || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {(taxReport.totals?.selected_gain_loss_after_adjustments || 0) >= 0 ? '+' : ''}€{formatIN(taxReport.totals?.selected_gain_loss_after_adjustments || 0)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Estimated Tax</div>
+                    <div className="text-lg font-semibold text-slate-900">€{formatIN(taxReport.totals?.estimated_tax || 0)}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Method Count (Actual)</div>
+                    <div className="text-lg font-semibold text-slate-900">{taxReport.method_counts?.actual || 0}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Method Count (Deemed)</div>
+                    <div className="text-lg font-semibold text-slate-900">{taxReport.method_counts?.deemed || 0}</div>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <div className="text-xs uppercase tracking-wide text-slate-500">Carryforward Next Year</div>
+                    <div className="text-lg font-semibold text-slate-900">€{formatIN(taxReport.carryforward?.loss_to_carryforward_next_year || 0)}</div>
+                  </div>
+                </div>
+
+                <div className="overflow-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="text-xs uppercase tracking-widest text-slate-400 border-b bg-slate-50">
+                      <tr className="text-left">
+                        <th className="px-4 py-3">Symbol</th>
+                        <th className="px-4 py-3">Sell Date</th>
+                        <th className="px-4 py-3">Qty</th>
+                        <th className="px-4 py-3">Proceeds (€)</th>
+                        <th className="px-4 py-3">Method</th>
+                        <th className="px-4 py-3">Final Gain/Loss (€)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {(taxReport.rows || []).length > 0 ? (taxReport.rows || []).map((row) => (
+                        <tr key={row.sale_id}>
+                          <td className="px-4 py-3 font-semibold">{row.symbol}</td>
+                          <td className="px-4 py-3">{row.sell_date}</td>
+                          <td className="px-4 py-3">{row.sell_qty}</td>
+                          <td className="px-4 py-3">{formatIN(row.proceeds)}</td>
+                          <td className="px-4 py-3">{row.selected_method}</td>
+                          <td className={`px-4 py-3 ${Number(row.selected_taxable_gain_loss || 0) >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            {Number(row.selected_taxable_gain_loss || 0) >= 0 ? '+' : ''}{formatIN(row.selected_taxable_gain_loss)}
+                          </td>
+                        </tr>
+                      )) : (
+                        <tr>
+                          <td className="px-4 py-6 text-sm text-slate-500" colSpan="6">No tax rows for selected configuration.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 

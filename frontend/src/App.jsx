@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import axios from 'axios';
 import DataImportView from './views/DataImportView';
 import DashboardView from './views/DashboardView';
@@ -35,6 +35,10 @@ function App() {
   const [stagingId, setStagingId] = useState(null);
   const [holdingsSearch, setHoldingsSearch] = useState('');
   const [realizedSearch, setRealizedSearch] = useState('');
+  const [taxCountries, setTaxCountries] = useState([]);
+  const [taxReport, setTaxReport] = useState(null);
+  const [taxReportLoading, setTaxReportLoading] = useState(false);
+  const [taxReportError, setTaxReportError] = useState('');
 
   const currentFY = () => {
     const now = new Date();
@@ -74,6 +78,47 @@ function App() {
       console.error('Realized Error:', err);
     }
   };
+
+  const fetchTaxCountries = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/tax/countries`);
+      setTaxCountries(res.data.countries || []);
+    } catch (err) {
+      console.error('Tax countries error:', err);
+      setTaxCountries([]);
+    }
+  }, []);
+
+  const fetchTaxReport = useCallback(async ({
+    countryCode = 'FI',
+    taxYear = new Date().getFullYear(),
+    methodMode = 'auto_best_per_sale',
+    priorLossCarryforward = 0,
+    includeRows = true,
+    baseCurrency = 'EUR',
+  } = {}) => {
+    setTaxReportLoading(true);
+    setTaxReportError('');
+    try {
+      const payload = {
+        country_code: countryCode,
+        tax_year: Number(taxYear),
+        method_mode: methodMode,
+        prior_loss_carryforward: Number(priorLossCarryforward) || 0,
+        include_rows: includeRows,
+        base_currency: baseCurrency,
+      };
+      const res = await axios.post(`${API_URL}/tax/report`, payload);
+      setTaxReport(res.data);
+    } catch (err) {
+      console.error('Tax report error:', err);
+      const detail = err?.response?.data?.detail || err?.message || 'Failed to load tax report.';
+      setTaxReportError(String(detail));
+      setTaxReport(null);
+    } finally {
+      setTaxReportLoading(false);
+    }
+  }, []);
 
   const handlePreview = async () => {
     setLoading(true);
@@ -181,7 +226,9 @@ function App() {
     fetchDashboard(initialFY);
     fetchSummary();
     fetchRealized();
-  }, []);
+    fetchTaxCountries();
+    fetchTaxReport({ countryCode: 'FI', taxYear: new Date().getFullYear() });
+  }, [fetchTaxCountries, fetchTaxReport]);
 
   const totals = (data.holdings || []).reduce(
     (acc, h) => {
@@ -198,6 +245,7 @@ function App() {
     'past-holding': 'Past Holdings',
     'net-worth': 'Net Worth Over Time',
     charges: 'Charges Paid by Financial Year',
+    'tax-report': 'Tax Report by Country',
   };
 
   useEffect(() => {
@@ -282,6 +330,7 @@ function App() {
                     <button onClick={() => { setDashboardSection('past-holding'); setView('dashboard'); setDashboardMenuOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100">Past Holdings</button>
                     <button onClick={() => { setDashboardSection('net-worth'); setView('dashboard'); setDashboardMenuOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100">Net Worth Over Time</button>
                     <button onClick={() => { setDashboardSection('charges'); setView('dashboard'); setDashboardMenuOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100">Charges Paid by Financial Year</button>
+                    <button onClick={() => { setDashboardSection('tax-report'); setView('dashboard'); setDashboardMenuOpen(false); }} className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-slate-100">Tax Report by Country</button>
                   </div>
                 )}
               </div>
@@ -356,6 +405,11 @@ function App() {
               setHoldingsSearch={setHoldingsSearch}
               realizedSearch={realizedSearch}
               setRealizedSearch={setRealizedSearch}
+              taxCountries={taxCountries}
+              taxReport={taxReport}
+              taxReportLoading={taxReportLoading}
+              taxReportError={taxReportError}
+              fetchTaxReport={fetchTaxReport}
             />
           )}
         </main>
